@@ -524,13 +524,13 @@ double	r=0,e;
 // 
 //------------
 double MMsSquariance(	int c, 
-					MMsMatrix* mx){
+                        MMsMatrix* mx){
 long	i;
 double	r=0,e; 
 
 	e=MMsAverage(c,mx);
 	for(i=1;i<=mx->nl;i++){
-		r+=sqr(MMsGetDouble(mx,i,c)-e);
+		r+=sqr((MMsGetDouble(mx,i,c)-e));
 	}
 	return(r);
 }
@@ -559,8 +559,8 @@ double MMsCorrelation(	int c1,
 						int c2, 
 						MMsMatrix* mx){
 	return(	MMsCovariance(c1,c2,mx)/
-			((sqrt(MMsSquariance(c1,mx)/(double)mx->nl)*
-			sqrt(MMsSquariance(c2,mx)/(double)mx->nl)))	);
+			(   (   sqrt(MMsSquariance(c1,mx)/(double)mx->nl)*
+                    sqrt(MMsSquariance(c2,mx)/(double)mx->nl)   )   )	);
 }
 
 //----------------------------------------------------------------------------
