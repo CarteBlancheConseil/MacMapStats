@@ -25,6 +25,7 @@
 // 
 //----------------------------------------------------------------------------
 // 22/05/2008 creation.
+// 10/10/2017 64 bits support.
 //----------------------------------------------------------------------------
 
 #include "MMsIO.h"
@@ -62,7 +63,7 @@ unsigned char	buff;
 static void	swap(int sz, int n, void* arr){
 int	i;
     for(i=0;i<n;i++){
-		swapword(sz,(void*)(((int)arr)+(i*sz)));
+		swapword(sz,(void*)(((long)arr)+(i*sz)));
     }
 }
 
@@ -176,39 +177,42 @@ int	end=1;
 static int MMsIOMatrixRead(MMsMatrix** mx, FILE* fp){
 size_t		sz=sizeof(MMsMatrix);
 MMsMatrix	bf;
-	*mx=NULL;
-	if(fread(&bf,sz,1,fp)!=1){
-		return(-1);
-	}
-	fseek(fp,0,SEEK_SET);
-	if(bf.flg!=1){
-fprintf(stderr,"bad endian %d\n",bf.flg);
-		swap(sizeof(int),3,&(bf.sign));
-	}
-	if(bf.sign==kMatrixRectangularKind_){
-		(*mx)=MMsMatrixAlloc(bf.nl,bf.nc);
-	}
-	else if(bf.sign==kMatrixDiagonalKind_){
-		(*mx)=MMsDiagMatrixAlloc(bf.nl);
-	}
-	else{
-fprintf(stderr,"bad matrix kind %d\n",bf.sign);
-		return(-2);
-	}
-	sz+=(bf.nl*bf.nc*sizeof(double));
-	if(fread(*mx,sz,1,fp)!=1){
-		return(-3);
-	}
-	if(bf.flg!=1){
-		swap(sizeof(int),4,*mx);
-		if(bf.sign==kMatrixRectangularKind_){
-			swap(sizeof(double),(*mx)->nl*(*mx)->nc,(*mx)->f);
-		}
-		else if(bf.sign==kMatrixDiagonalKind_){
-			swap(sizeof(double),(((((*mx)->nl*(*mx)->nl)-(*mx)->nl)/2l)+(*mx)->nl),(*mx)->f);
-		}
-	}
-	return(0);
+    *mx=NULL;
+    if(fread(&bf,sz,1,fp)!=1){
+fprintf(stderr,"MMsIOMatrixRead : fread (header) failed\n");
+        return(-1);
+    }
+    fseek(fp,0,SEEK_SET);
+    if(bf.flg!=1){
+fprintf(stderr,"MMsIOMatrixRead : bad endian %d\n",bf.flg);
+        swap(sizeof(int),3,&(bf.sign));
+    }
+    if(bf.sign==kMatrixRectangularKind_){
+        (*mx)=MMsMatrixAlloc(bf.nl,bf.nc);
+        sz+=(bf.nl*bf.nc*sizeof(double));
+    }
+    else if(bf.sign==kMatrixDiagonalKind_){
+        (*mx)=MMsDiagMatrixAlloc(bf.nl);
+        sz+=(((((bf.nl*bf.nl)-bf.nl)/2l)+bf.nl)*sizeof(double));
+    }
+    else{
+fprintf(stderr,"MMsIOMatrixRead : bad matrix kind %d\n",bf.sign);
+        return(-2);
+    }
+    if(fread(*mx,sz,1,fp)!=1){
+fprintf(stderr,"MMsIOMatrixRead : fread (data) failed\n");
+        return(-3);
+    }
+    if(bf.flg!=1){
+        swap(sizeof(int),4,*mx);
+        if(bf.sign==kMatrixRectangularKind_){
+            swap(sizeof(double),(*mx)->nl*(*mx)->nc,(*mx)->f);
+        }
+        else if(bf.sign==kMatrixDiagonalKind_){
+            swap(sizeof(double),(((((*mx)->nl*(*mx)->nl)-(*mx)->nl)/2l)+(*mx)->nl),(*mx)->f);
+        }
+    }
+    return(0);
 }
 
 //----------------------------------------------------------------------------
@@ -279,6 +283,53 @@ hca_clss* cb=(*(hca_clss**)b);
 }
 
 //----------------------------------------------------------------------------
+//
+//------------
+static void	to_io(hca_clss clss, hca_clss_io* ioclss){
+    ioclss->cid=clss.cid;
+    ioclss->cidx=clss.cidx;
+    
+    if(clss.left){
+        ioclss->left=clss.left->cid;
+    }
+    else{
+        ioclss->left=0;
+    }
+    if(clss.right){
+        ioclss->right=clss.right->cid;
+    }
+    else{
+        ioclss->right=0;
+    }
+    if(clss.sup){
+        ioclss->sup=clss.sup->cid;
+    }
+    else{
+        ioclss->sup=0;
+    }
+
+    ioclss->height=clss.height;
+    ioclss->midwidth=clss.midwidth;
+    ioclss->ref=clss.ref;
+    ioclss->ncmp=clss.ncmp;
+}
+
+//----------------------------------------------------------------------------
+//
+//------------
+static void	from_io(hca_clss_io ioclss, hca_clss* clss){
+    clss->cid=ioclss.cid;
+    clss->cidx=ioclss.cidx;
+    clss->left=ioclss.left;
+    clss->right=ioclss.right;
+    clss->sup=ioclss.sup;
+    clss->height=ioclss.height;
+    clss->midwidth=ioclss.midwidth;
+    clss->ref=ioclss.ref;
+    clss->ncmp=ioclss.ncmp;
+}
+
+//----------------------------------------------------------------------------
 // 
 //------------
 static int MMsIOClssWrite(	hca_clss** clsss,
@@ -287,6 +338,7 @@ static int MMsIOClssWrite(	hca_clss** clsss,
 	
 hca_parse	prs={0,NULL};
 hca_clss	clss;
+hca_clss_io	clssio;
 int			i,j;
 
 	if((nclsss==1)&&(clsss[0]->left!=NULL)&&(clsss[0]->right!=NULL)){
@@ -309,26 +361,12 @@ int			i,j;
 	fwrite(&i,sizeof(int),1,fp);
 	fwrite(&prs.n,sizeof(int),1,fp);
 	for(i=0;i<prs.n;i++){
-		clss=(*(prs.lclsss[i]));
-		if(clss.left){
-			clss.left=(hca_clss*)clss.left->cid;
-		}
-		else{
-			clss.left=(hca_clss*)0;
-		}
-		if(clss.right){
-			clss.right=(hca_clss*)clss.right->cid;
-		}
-		else{
-			clss.right=(hca_clss*)0;
-		}
-		if(clss.sup){
-			clss.sup=(hca_clss*)clss.sup->cid;
-		}
-		else{
-			clss.sup=(hca_clss*)0;
-		}
-		fwrite(&clss,sizeof(hca_clss)-sizeof(int),1,fp);
+		
+        clss=(*(prs.lclsss[i]));
+        
+        to_io(clss,&clssio);
+        
+		fwrite(&clssio,sizeof(hca_clss_io)-sizeof(int),1,fp);
 		if(clss.cmp){
 			for(j=0;j<clss.ncmp;j++){
 				fwrite(&(clss.cmp[j]->cid),sizeof(int),1,fp);
@@ -349,6 +387,7 @@ static int MMsIOClssRead(	hca_clss** *clsss,
 							int *nclsss,
 							FILE* fp){
 int			i,j,ed;
+hca_clss_io	clssio;
 hca_clss	clss;
 hca_clss*	pclss;
 hca_clss**	ppclss;
@@ -382,35 +421,40 @@ hca_clss**	ppclss;
 //fprintf(stderr,"reading class %d\n",i);
 		pclss=(hca_clss*)malloc(sizeof(hca_clss));
 		(*clsss)[i]=pclss;
-		if(fread(pclss,sizeof(hca_clss)-sizeof(int),1,fp)!=1){
+        
+        if(fread(&clssio,sizeof(hca_clss_io)-sizeof(int),1,fp)!=1){
 //fprintf(stderr,"fread error\n");
-			(*nclsss)=i+1;
-			return(-1);
-		}
-		if(ed!=1){
-			swap(sizeof(int),1,&(pclss->cid));
-			swap(sizeof(int),1,&(pclss->cidx));
-			swap(sizeof(int),1,&(pclss->sup));
-			swap(sizeof(int),1,&(pclss->left));
-			swap(sizeof(int),1,&(pclss->right));
-			swap(sizeof(double),1,&(pclss->height));
-			swap(sizeof(double),1,&(pclss->midwidth));
-			swap(sizeof(int),1,&(pclss->ref));
-			swap(sizeof(int),1,&(pclss->ncmp));
-		}
-		if(pclss->ncmp>0){
-//fprintf(stderr,"class %d->%d components\n",i,pclss->ncmp);
-			pclss->cmp=(hca_clss**)malloc(pclss->ncmp*sizeof(hca_clss*));
-			if(fread(pclss->cmp,pclss->ncmp*sizeof(hca_clss*),1,fp)!=1){
-//fprintf(stderr,"fread error\n");
+            (*nclsss)=i+1;
+            return(-1);
+        }
+        
+        if(ed!=1){
+            swap(sizeof(int),1,&(clssio.cid));
+            swap(sizeof(int),1,&(clssio.cidx));
+            swap(sizeof(int),1,&(clssio.sup));
+            swap(sizeof(int),1,&(clssio.left));
+            swap(sizeof(int),1,&(clssio.right));
+            swap(sizeof(double),1,&(clssio.height));
+            swap(sizeof(double),1,&(clssio.midwidth));
+            swap(sizeof(int),1,&(clssio.ref));
+            swap(sizeof(int),1,&(clssio.ncmp));
+        }
+        
+		if(clssio.ncmp>0){
+			pclss->cmp=(hca_clss**)malloc(clssio.ncmp*sizeof(hca_clss*));
+			if(fread(pclss->cmp,clssio.ncmp*sizeof(hca_clss*),1,fp)!=1){
 				(*nclsss)=i+1;
 				return(-1);
 			}
 			if(ed!=1){
-				swap(sizeof(int),pclss->ncmp,pclss->cmp);
+				swap(sizeof(int),clssio.ncmp,pclss->cmp);
 			}
 		}
-		
+        else{
+            pclss->ncmp=0;
+            pclss->cmp=NULL;
+        }
+        from_io(clssio,pclss);
 	}
 	
 
@@ -754,48 +798,54 @@ fprintf(stderr,"indic\n");
 		return(status);
 	}
 	
-	switch(ana->kind){
-		case _kAnalysisUNI:
-			status=MMsIOMatrixReadFile(&((mmx_uni*)ana)->clss,"clss.mmx");
-			if(status==FileNotFoundError){
-				status=0;
-			}
-fprintf(stderr,"_kAnalysisUNI, MMsIOMatrixReadFile returns(%d)\n",status);
-			break;
-		case _kAnalysisPC:
-		case _kAnalysisPCn:
-			status=MMsIOMatrixReadFile(&((mmx_pca*)ana)->cv,"cv.mmx");
-			if(status){
-				break;
-			}
-			status=MMsIOMatrixReadFile(&((mmx_pca*)ana)->chr,"chr.mmx");
-			if(status){
-				break;
-			}
-			status=MMsIOMatrixReadFile(&((mmx_pca*)ana)->var,"var.mmx");
-			break;
-		case _kAnalysisFc:
-			status=MMsIOMatrixReadFile(&((mmx_fa*)ana)->ctr,"ctr.mmx");
-			if(status){
-				break;
-			}
-			status=MMsIOMatrixReadFile(&((mmx_fa*)ana)->chr,"chr.mmx");
-			if(status){
-				break;
-			}
-			status=MMsIOMatrixReadFile(&((mmx_fa*)ana)->var,"var.mmx");
-			break;
-		case _kAnalysisHC:
-			status=MMsIOMatrixReadFile(&((mmx_hc*)ana)->dst,"dst.mmx");
-			break;
-		case _kAnalysisIRA:
-//fprintf(stderr,"center\n");
-			status=MMsIOMatrixReadFile(&((mmx_ira*)ana)->center,"center.mmx");
-			break;
-	}
-	cd(cwd,NULL);	
+    switch(ana->kind){
+        case _kAnalysisUNI:
+fprintf(stderr,"clss\n");
+           status=MMsIOMatrixReadFile(&((mmx_uni*)ana)->clss,"clss.mmx");
+            if(status==FileNotFoundError){
+                status=0;
+            }
+            break;
+        case _kAnalysisPC:
+        case _kAnalysisPCn:
+fprintf(stderr,"cv\n");
+            status=MMsIOMatrixReadFile(&((mmx_pca*)ana)->cv,"cv.mmx");
+            if(status){
+                break;
+            }
+fprintf(stderr,"chr\n");
+            status=MMsIOMatrixReadFile(&((mmx_pca*)ana)->chr,"chr.mmx");
+            if(status){
+                break;
+            }
+fprintf(stderr,"var\n");
+            status=MMsIOMatrixReadFile(&((mmx_pca*)ana)->var,"var.mmx");
+            break;
+        case _kAnalysisFc:
+fprintf(stderr,"ctr\n");
+            status=MMsIOMatrixReadFile(&((mmx_fa*)ana)->ctr,"ctr.mmx");
+            if(status){
+                break;
+            }
+fprintf(stderr,"chr\n");
+            status=MMsIOMatrixReadFile(&((mmx_fa*)ana)->chr,"chr.mmx");
+            if(status){
+                break;
+            }
+fprintf(stderr,"var\n");
+            status=MMsIOMatrixReadFile(&((mmx_fa*)ana)->var,"var.mmx");
+            break;
+        case _kAnalysisHC:
+fprintf(stderr,"dst\n");
+            status=MMsIOMatrixReadFile(&((mmx_hc*)ana)->dst,"dst.mmx");
+            break;
+        case _kAnalysisIRA:
+fprintf(stderr,"center\n");
+            status=MMsIOMatrixReadFile(&((mmx_ira*)ana)->center,"center.mmx");
+            break;
+    }
+    cd(cwd,NULL);
     return(status);
-//    return(0);
 }
 
 //----------------------------------------------------------------------------

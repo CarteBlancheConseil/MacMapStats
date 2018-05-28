@@ -34,7 +34,7 @@
 //----------------------------------------------------------------------------
 // 
 //------------
-static hca_clss* hca_classnew(int ref, int cid){
+hca_clss* hca_classnew(int ref, int cid){
 hca_clss*	clss=(hca_clss*)malloc(sizeof(hca_clss));
 	clss->cid=cid;
 	clss->cidx=cid;
@@ -56,7 +56,7 @@ hca_clss*	clss=(hca_clss*)malloc(sizeof(hca_clss));
 //----------------------------------------------------------------------------
 // 
 //------------
-static hca_clss** hca_stackinit(int n, int maj){
+hca_clss** hca_stackinit(int n, int maj){
 int			i;
 hca_clss**	clsss=(hca_clss**)malloc(sizeof(hca_clss*)*n);
 	for(i=0;i<n;i++){

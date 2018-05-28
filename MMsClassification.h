@@ -69,6 +69,25 @@ struct hca_clss{
 	int			ncmp;		// nb initial classes
 	hca_clss**	cmp;		// initial component
 };
+    
+typedef struct hca_clss_io{ // Read/Write for 64 bits
+    int			cid;		// class id (in the tree)
+    int			cidx;		// class index (in the tree)
+    
+    int         sup;		// parent class
+    int         left;		// left branch
+    int         right;		// right branch
+    
+    double		height;		// class height (-1 for inital classes)
+    double		midwidth;	// class midwidth
+    
+    int			ref;		// line index (only for initial classes, 0 for others)
+    
+    int			ncmp;		// nb initial classes
+    int         cmp;		// initial component
+}
+hca_clss_io;
+
 
 //----------------------------------------------------------------------------
 
@@ -86,7 +105,11 @@ hca_clss** ira_calc		(	mmx_ira* data);
 void ira_classfree		(	hca_clss* tree);
 
 // Utils
-hca_clss** hca_stackadd	(	hca_clss** clsss, 
+hca_clss* hca_classnew  (   int ref,
+                            int cid);
+hca_clss** hca_stackinit(   int n,
+                            int maj);
+hca_clss** hca_stackadd	(	hca_clss** clsss,
 							hca_clss* clss, 
 							int n);
 hca_clss** hca_stackrmv	(	hca_clss** clsss, 
